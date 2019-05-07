@@ -1,23 +1,24 @@
 ## 1. 可执行脚本
 使用Javascript语言编写一个可执行脚本
 
-#!/usr/bin/env node
-console.log('hello');
+    #!/usr/bin/env node
+    console.log('hello');
 然后修改权限
 
 chmod 755 hello
+
 执行脚本
 
-./hello
-hello
+./hello   
+
 如果想把路径去掉可以把hello的路径加入环境变量PATH。但是，另一种更好的做法时在当前目录下创建一个package.json
 
-{
-    name:'hello',
-    "bin":{
-        "hello":"hello"
+    {
+        name:'hello',
+        "bin":{
+            "hello":"hello"
+        }
     }
-}
 然后npm link
 
 npm link
@@ -30,25 +31,25 @@ hello
 
 命令行参数可以用系统变量process.env获取
 
-#!/usr/bin/env node
-console.log('hello ',process.argv[2]);
-hello zypx
+    #!/usr/bin/env node
+    console.log('hello ',process.argv[2]);
+    hello zypx
 
-process.env = ['node','hello','zypx']
+    process.env = ['node','hello','zypx']
 
 
 ## 3. 新建进程
 
 脚本可以通过child_process模块新建子进程，从而执行linux命令
 
-#!/usr/bin/env node
-let name = process.argv[2];
-let {exec} = require('child_process');
-let child  = exec('echo hello '+name,(err,stdout,stderr)=>{
-    if(err) throw err;
-    console.info(stdout);
-});
-hello zypx
+    #!/usr/bin/env node
+    let name = process.argv[2];
+    let {exec} = require('child_process');
+    let child  = exec('echo hello '+name,(err,stdout,stderr)=>{
+        if(err) throw err;
+        console.info(stdout);
+    });
+    hello zypx
 
 
 ## 4. yargs
@@ -59,97 +60,105 @@ npm install yargs --save
 4.2 读取命令行参数
 yargs模块提供了argv对象，用来读取命令行参数
 
-#!/usr/bin/env node
-let argv = require('yargs').argv;
-console.log('hello ',argv.name);
-hello --name=zypx
-hello --name zypx
-process.argv
+    #!/usr/bin/env node
+    let argv = require('yargs').argv;
+    console.log('hello ',argv.name);
+    hello --name=zypx
+    hello --name zypx
+    process.argv
 
-[ '/usr/local/bin/node', '/usr/local/bin/hello4', '--name=zypx' ]
-argv
+    [ '/usr/local/bin/node', '/usr/local/bin/hello4', '--name=zypx' ]
+    argv
 
-{
-  name: 'zypx',
-}
+    {
+      name: 'zypx',
+    }
 
 4.3 还可以指定别名
-let argv = require('yargs')
-.alias('n','name')
-.argv
-hello -n zypx
-hello --name zypx
+
+    let argv = require('yargs')
+    .alias('n','name')
+    .argv
+    hello -n zypx
+    hello --name zypx
 
 4.4 下划线属性
+
 argv对象有一个下划线属性，可以获取非连词线开头的参数
 
-let argv = require('yargs').argv
-console.log('hello ',argv.n);
-console.log(argv._);
-hello A -n zypx B C
-hello zfpx ['A','B','C']
+    let argv = require('yargs').argv
+    console.log('hello ',argv.n);
+    console.log(argv._);
+    hello A -n zypx B C
+    hello zfpx ['A','B','C']
 
 
 4.5 命令行参数的配置
-demand 是否必选
-default 默认值
-describe 提示
-#!/usr/bin/env node
-let argv = require('yargs')
-  .demand(['n'])
-  .default({n:'zypx'})
-  .describe({n:"你的名字"})
-  .argv;
- console.log('hello ',argv.n);
-这个代表n不能省略，默认值为zfpx,并给出提示
 
-option方法允许将所有的配置写入配置对象
+  demand 是否必选   
+  default 默认值    
+  describe 提示  
 
-#!/usr/bin/env node
-let argv = require('yargs')
-.option('n',{
-    alias:'name',
-    demand:true,
-    default:'zypx',
-    describe:'请输入你的名字',
-    type:'string',
-    boolean:true
-}).argv
-console.log('hello',argv.n);
+        #!/usr/bin/env node
+        let argv = require('yargs')
+          .demand(['n'])
+          .default({n:'zypx'})
+          .describe({n:"你的名字"})
+          .argv;
+        console.log('hello ',argv.n);
+
+  这个代表n不能省略，默认值为zfpx,并给出提示
+
+  option方法允许将所有的配置写入配置对象
+
+    #!/usr/bin/env node
+    let argv = require('yargs')
+    .option('n',{
+        alias:'name',
+        demand:true,
+        default:'zypx',
+        describe:'请输入你的名字',
+        type:'string',
+        boolean:true
+    }).argv
+    console.log('hello',argv.n);
 有时候，某些参数不需要，只起到开关作用。可以用boolean指定这些参数返回布尔值
 
-#!/usr/bin/env node
-let argv = require('yargs')
-    .boolean(['private'])
-    .argv
-console.log('hello',argv.n);
+    #!/usr/bin/env node
+    let argv = require('yargs')
+        .boolean(['private'])
+        .argv
+    console.log('hello',argv.n);
 参数private总是返回一个布尔值
 
-hello 
-false
-hello -private
-true
-hello -private zypx   
-true
+hello     
+false   
+hello -private    
+true    
+hello -private zypx       
+true    
+
 4.6 帮助信息
+
 yargs模块提供以下方法，生成帮助信息
 
-usage 用法格式
-example 提供例子
-help 显示帮助信息
-epilog 出现在帮助信息的结尾
-#!/usr/bin/env node
-let argv = require('argv')
-  .option('n',{
-      alias:'name',
-      demand:true,
-      default:'tom',
-      describe:'你的名字',
-      type:'string'
-  })
-  .usage('Usage: hello [options]')
-  .example('hello -n zypx','say hello to zypx')
-  .help('h')
-  .alias('h','help')
-  .epilog('copyright 2018')
-  .argv
+usage 用法格式    
+example 提供例子    
+help 显示帮助信息   
+epilog 出现在帮助信息的结尾   
+
+    #!/usr/bin/env node
+    let argv = require('argv')
+      .option('n',{
+          alias:'name',
+          demand:true,
+          default:'tom',
+          describe:'你的名字',
+          type:'string'
+      })
+      .usage('Usage: hello [options]')
+      .example('hello -n zypx','say hello to zypx')
+      .help('h')
+      .alias('h','help')
+      .epilog('copyright 2018')
+      .argv

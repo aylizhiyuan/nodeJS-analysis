@@ -107,48 +107,50 @@ UTF-8 是 Unicode 的实现方式之一
 
 
 1.10 编码规则
+
 对于单字节的符号，字节的第一位设为0，后面7位为这个符号的 Unicode 码。因此对于英语字母，UTF-8 编码和 ASCII 码是相同的。
 对于n字节的符号（n > 1），第一个字节的前n位都设为1，第n+ 1位设为0，后面字节的前两位一律设为10。剩下的没有提及的二进制位，全部为这个符号的 Unicode 码。
 
 
-Unicode符号范围     |        UTF-8编码方式
-(十六进制)        |              （二进制）
-----------------------+---------------------------------------------
-0000 0000-0000 007F | 0xxxxxxx
-0000 0080-0000 07FF | 110xxxxx 10xxxxxx
-0000 0800-0000 FFFF | 1110xxxx 10xxxxxx 10xxxxxx
-0001 0000-0010 FFFF | 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-Unicode编码
-function transfer(num) {
-  let ary = ['1110', '10', '10'];
-  let binary = num.toString(2);
-  ary[2] = ary[2]+binary.slice(binary.length-6);
-  ary[1] = ary[1]+binary.slice(binary.length-12,binary.length-6);
-  ary[0] = ary[0]+binary.slice(0,binary.length-12).padStart(4,'0');
-  let result =  ary.join('');
-  return parseInt(result,2).toString(16);
-}
-//万
-let result = transfer(0x4E07);//E4B887
+        Unicode符号范围     |        UTF-8编码方式
+        (十六进制)        |              （二进制）
+        ----------------------+---------------------------------------------
+        0000 0000-0000 007F | 0xxxxxxx
+        0000 0080-0000 07FF | 110xxxxx 10xxxxxx
+        0000 0800-0000 FFFF | 1110xxxx 10xxxxxx 10xxxxxx
+        0001 0000-0010 FFFF | 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+        Unicode编码
+        function transfer(num) {
+        let ary = ['1110', '10', '10'];
+        let binary = num.toString(2);
+        ary[2] = ary[2]+binary.slice(binary.length-6);
+        ary[1] = ary[1]+binary.slice(binary.length-12,binary.length-6);
+        ary[0] = ary[0]+binary.slice(0,binary.length-12).padStart(4,'0');
+        let result =  ary.join('');
+        return parseInt(result,2).toString(16);
+        }
+        //万
+        let result = transfer(0x4E07);//E4B887
 
 
 1.11 联通不如移动
 
-C1 1100 0001
-AA 1010 1010
-CD 1100 1101
-A8 1010 1000
+        C1 1100 0001
+        AA 1010 1010
+        CD 1100 1101
+        A8 1010 1000
 
-0000000001101010->006A(106)->j
-0000001101101000->0368(872)->?
+        0000000001101010->006A(106)->j
+        0000001101101000->0368(872)->?
 
 
-GB2312
-unicode编码表1
-unicode编码表2
+        GB2312
+        unicode编码表1
+        unicode编码表2
 
 
 1.12 文本编码
+
 使用NodeJS编写前端工具时，操作得最多的是文本文件，因此也就涉及到了文件编码的处理问题。我们常用的文本编码有UTF8和GBK两种，并且UTF8文件还可能带有BOM。在读取不同编码的文本文件时，需要将文件内容转换为JS使用的UTF8编码字符串后才能正常处理。
 
 
@@ -157,28 +159,30 @@ unicode编码表2
 
 BOM用于标记一个文本文件使用Unicode编码，其本身是一个Unicode字符（"\uFEFF"），位于文本文件头部。在不同的Unicode编码下，BOM字符对应的二进制字节如下：
 
- Bytes      Encoding
-----------------------------
- FE FF       UTF16BE
- FF FE       UTF16LE
- EF BB BF    UTF8
+        Bytes      Encoding
+        ----------------------------
+        FE FF       UTF16BE
+        FF FE       UTF16LE
+        EF BB BF    UTF8
+
+
 因此，我们可以根据文本文件头几个字节等于啥来判断文件是否包含BOM，以及使用哪种Unicode编码。但是，BOM字符虽然起到了标记文件编码的作用，其本身却不属于文件内容的一部分，如果读取文本文件时不去掉BOM，在某些使用场景下就会有问题。例如我们把几个JS文件合并成一个文件后，如果文件中间含有BOM字符，就会导致浏览器JS语法错误。因此，使用NodeJS读取文本文件时，一般需要去掉BOM
 
-function readText(pathname) {
-    var bin = fs.readFileSync(pathname);
-    if (bin[0] === 0xEF && bin[1] === 0xBB && bin[2] === 0xBF) {
-        bin = bin.slice(3);
+    function readText(pathname) {
+        var bin = fs.readFileSync(pathname);
+        if (bin[0] === 0xEF && bin[1] === 0xBB && bin[2] === 0xBF) {
+            bin = bin.slice(3);
+        }
+        return bin.toString('utf-8');
     }
-    return bin.toString('utf-8');
-}
 
 
 1.12.2 GBK转UTF8
 
 NodeJS支持在读取文本文件时，或者在Buffer转换为字符串时指定文本编码，但遗憾的是，GBK编码不在NodeJS自身支持范围内。因此，一般我们借助iconv-lite这个三方包来转换编码。使用NPM下载该包后，我们可以按下边方式编写一个读取GBK文本文件的函数。
 
-var iconv = require('iconv-lite');
-function readGBKText(pathname) {
-    var bin = fs.readFileSync(pathname);
-    return iconv.decode(bin, 'gbk');
-}
+        var iconv = require('iconv-lite');
+        function readGBKText(pathname) {
+            var bin = fs.readFileSync(pathname);
+            return iconv.decode(bin, 'gbk');
+        }

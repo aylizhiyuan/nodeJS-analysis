@@ -1,16 +1,19 @@
 1. Node.js 安装配置
+
 本章节我们将向大家介绍在window、Mac和Linux上安装Node.js的方法
 
 偶数位为稳定版本，奇数位为非稳定版本
 稳定版本中已经发布的API是不会改变的
-1.1. 打开官网主页 #
+
+1.1. 打开官网主页 
 
 首页会推荐你合适的版本 https://nodejs.org/en/ 
 
 1.2. 如果推荐的版本不合适可以进入下载页面
 https://nodejs.org/en/download/  根据不同平台系统选择你需要的Node.js安装包。 注意：Linux上安装Node.js需要安装Python 2.6 或 2.7 ，不建议安装Python 3.0以上版本。
 
-2.windows
+2. windows
+
 2.1 步骤 1 : 双击下载后的安装包 node-v4.2.1-x64.msi运行安装程序：
 
 
@@ -47,6 +50,7 @@ https://nodejs.org/en/download/  根据不同平台系统选择你需要的Node.
  
 
 3. MAC安装
+
 3.1 安装包安装
 下载Mac安装后结束后，单击下载的文件，运行它，会出现一个向导对话框。 单击continue按钮开始安装，紧接着向导会向你询问系统用户密码，输入密码后就开始安装。不一会儿就会看见一个提示Node已经被安装到计算机上的确认窗口
 
@@ -60,6 +64,7 @@ homebrew依赖ruby,如果安装出错检查一下ruby的版本以及路径
  brew install node
 4.其它软件也都可以通过homebrew安装
  brew install mongodb redis git
+
 3.3 n模块安装
 切换版本或升级node可以安装 n 模块
 
@@ -71,27 +76,36 @@ n的npm安装包
 n
 
 4. 源代码安装
+
 4.1 安装依赖库
+
 Node依赖一些第三方代码库，但幸运的是大多数第三方库已经随Node一起发行，如果想从源码编译，需要以下两项工具
 
 python(2.4及以上版本)
 libssl-dev 如果计划使用SSL/TLS加密，则必须安装它。libssl是openssl工具中用到的库，在linux和UNIX系统中，通常可以用你喜欢的包管理器安装libssl,而在Mac OS X系统中已经预置了。
+
 4.2 下载源代码 选择好版本后，你就可以到nodejs.org网站上复制对应的tar压缩包进行下载，比如你用的mac或linux,可以输入以下命令下载
 wget https://nodejs.org/dist/v8.9.4/node-v8.9.4.tar.gz
 curl -O https://nodejs.org/dist/v8.9.4/node-v8.9.4.tar.gz
 如果这二种工具都没有可以下载这二个工具或者从网站上点击链接下载
+
 4.3 编译源码
+
 对tar压缩包进行解压缩
 
-x extract 解包
-f file 要解包的是个文件
-z gzip 这个包是压缩过的，需要解压缩
-v verbose把解包过程告诉你
-tar xfz node-v8.9.4.tar.gz
+x extract 解包 
+
+f file 要解包的是个文件 
+
+z gzip 这个包是压缩过的，需要解压缩 
+
+v verbose把解包过程告诉你 
+
+tar xfz node-v8.9.4.tar.gz 
+
 进入源代码目录
 
-cd node-v8.9.4
-对其进行配置
+cd node-v8.9.4对其进行配置
 
 ./configure
 现在就开始编译了

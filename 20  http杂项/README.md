@@ -8,11 +8,14 @@
 静态资源服务器
 
 1.1 -r/--range
+
 该选项指定下载字节的范围，常应用于分块下载文件
 range的表示方式有多种，如100-500，则指定从100开始的400个字节数据；-500表示最后的500个字节；5000-表示从第5000个字节开始的所有字节
 另外还可以同时指定多个字节块，中间用","分开
 服务器告诉客户端可以使用range response.setHeader('Accept-Ranges', 'bytes')
+
 Server通过请求头中的Range: bytes=0-xxx来判断是否是做Range请求，如果这个值存在而且有效，则只发回请求的那部分文件内容，响应的状态码变成206,如果无效，则返回416状态码，表明Request Range Not Satisfiable
+
 curl -r 0-1024 -o music.mp3
 
 
