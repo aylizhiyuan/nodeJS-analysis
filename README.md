@@ -37,12 +37,12 @@
 
 2) 闭包
 
-    function out(){
-        const bigData = new Buffer(10);
-        inner = function(){
-            void bigData;
+        function out(){
+            const bigData = new Buffer(10);
+            inner = function(){
+                void bigData;
+            }
         }
-    }
 
 闭包会引用到父级函数中的变量，如果闭包未被释放，就会导致内存泄漏。上面的例子是inner直接挂在了root上，从而导致内存泄漏(bigData不会释放)
 
@@ -61,10 +61,5 @@
 
 
 
-<<<<<<< HEAD
-=======
-目前完成了核心API的使用文档，待完成的是nodeJS源码的分析....
 
-期待.....
->>>>>>> 0395d8deabefd06c91dcb3448c3e7834265b749c
 
