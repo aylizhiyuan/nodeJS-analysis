@@ -3,6 +3,7 @@
 使用process对象代表应用程序,这是一个全局对象，可以通过它来获取Node.js应用程序以及运行该程序的用户、环境等各种信息的属性、方法和事件。
 
 1.1 进程对象属性
+
     execPath 可执行文件的绝对路径,如 /usr/local/bin/node
     version 版本号
     versions 依赖库的版本号
@@ -16,11 +17,11 @@
     title 窗口标题
     arch 处理器架构 arm ia32 x64
 
-process.stdin.resume();
-process.stdin.on('data',function(chunk){
-  process.stdout.write(`进程接收到数据: `+chunk);
-});
-process.argv.forEach((val,index,ary)=> console.log(index,val));
+    process.stdin.resume();
+    process.stdin.on('data',function(chunk){
+    process.stdout.write(`进程接收到数据: `+chunk);
+    });
+    process.argv.forEach((val,index,ary)=> console.log(index,val));
 
 1.2 memoryUsage方法
 
@@ -28,8 +29,11 @@ process.memoryUsage()
 stack
 
 rss（resident set size）：所有内存占用，包括指令区和堆栈。
+
 heapTotal："堆"占用的内存，包括用到的和没用到的。
+
 heapUsed：用到的堆的部分。
+
 external： V8 引擎内部的 C++ 对象占用的内存。
 
 1.3 nextTick方法
@@ -37,21 +41,24 @@ external： V8 引擎内部的 C++ 对象占用的内存。
 nextTick方法用于将一个函数推迟到代码中所书写的下一个同步方法执行完毕或异步方法的回调函数开始执行前调用
 
 1.4 chdir
+
 chdir方法用于修改Node.js应用程序中使用的当前工作目录，使用方式如下
 
 process.chdir(directory);
 
 1.5 cwd 方法
+
 cwd方法用返回当前目录，不使用任何参数
 
 console.log(process.cwd());
 
 1.6 chdir 方法
+
 改变当前的工作目录
 
-console.log(`当前目录: ${process.cwd()}`);
-process.chdir('..);
-console.log(`上层目录: ${process.cwd()});
+    console.log(`当前目录: ${process.cwd()}`);
+    process.chdir('..);
+    console.log(`上层目录: ${process.cwd()});
 
 1.7 exit 方法
 
@@ -64,8 +71,11 @@ process.exit(0);
 用于向进程发送一个信号
 
 SIGINT 程序终止(interrupt)信号, 在用户键入INTR字符(通常是Ctrl-C)时发出，用于通知前台进程组终止进程。
+
 SIGTERM 程序结束(terminate)信号, 该信号可以被阻塞和处理。通常用来要求程序自己正常退出，shell命令kill缺省产生这个信号
-process.kill(pid,[signal]);
+
+    process.kill(pid,[signal]);
+
 pid是一个整数，用于指定需要接收信号的进程ID
 signal 发送的信号，默认为 SIGTERM
 
@@ -76,37 +86,39 @@ signal 发送的信号，默认为 SIGTERM
 process.uptime()
 
 1.10 hrtime
+
 测试一个代码段的运行时间,返回两个时间，第一个单位是秒，第二个单位是纳秒
 
-let fs = require('fs);
-let time = process.hrtime();
-let data = fs.readFileSync('index.txt');
-let diff = process.hrtime(time);
-console.log(`读文件操作耗费的%d秒`,diff[0]);
+    let fs = require('fs);
+    let time = process.hrtime();
+    let data = fs.readFileSync('index.txt');
+    let diff = process.hrtime(time);
+    console.log(`读文件操作耗费的%d秒`,diff[0]);
 
 1.11 exit事件
+
 当运行Node.js应用程序进程退出时触发进程对象的exit事件。可以通过指定事件回调函数来指定进程退出时所执行的处理。
 
-process.on('exit',function(){
-    console.log('Node.js进程被推出);
-});
-process.exit();
+    process.on('exit',function(){
+        console.log('Node.js进程被推出);
+    });
+    process.exit();
 
 1.12 uncaughtException事件
 
 当应用程序抛出一个未被捕获的异常时触发进程对象的uncaughtException事件
 
-process.on('uncaughtException',function(err){
-  console.log('捕获到一个未被处理的错误:',err);
-});
-notExist();
+    process.on('uncaughtException',function(err){
+    console.log('捕获到一个未被处理的错误:',err);
+    });
+    notExist();
 
 1.13 信号事件
 
-process.stdin.resume();
-process.on('SIGINT',function(){
-    console.log('接收到SIGINT信号');
-});
+    process.stdin.resume();
+    process.on('SIGINT',function(){
+        console.log('接收到SIGINT信号');
+    });
 
 
 ## 2. 子进程
@@ -119,40 +131,56 @@ process.on('SIGINT',function(){
 
 2.1.1 语法
 
-child_process.spawn(command,[args],[options]);
+    child_process.spawn(command,[args],[options]);
+
+    command 必须指定的参数，指定需要执行的命令
+
+    args 数组，存放了所有运行该命令需要的参数
+
+    options 参数为一个对象，用于指定开启子进程时使用的选项
+
+        cwd 子进程的工作目录
+
+        env 环境变量
+
+        detached 如果为true,该子进程为一个进程组中的领头进程，当父进程不存在时也可以独立存在
+
+        stdio 三个元素的数组，设置标准输入/输出
+
+            pipe 在父进程和子进程之间创建一个管道，父进程可以通过子进程的stdio[0]访问子进程的标准输入，通过stdio[1]访问标准输出,stdio[2]访问错误输出
+
+            ipc 在父进程和子进程之间创建一个专用与传递消息的IPC通道。可以调用子进程的send方法向子进程发消息，子进程会触发message事件
+
+            ignore 指定不为子进程设置文件描述符。这样子进程的标准输入、标准输出和错误输出被忽略
+
+            stream 子进程和父进程共享一个终端设备、文件、端口或管道
+
+            正整数值 和共享一个steam是一样的
+
+            null或undefined 在子进程中创建与父进程相连的管道
+
+            默认情况下，子进程的stdin,stdout,stderr导向了ChildProcess这个对象的child.stdin,child.stdout,child.stderr流
+
+实例代码:
 
 
-command 必须指定的参数，指定需要执行的命令
-args 数组，存放了所有运行该命令需要的参数
-options 参数为一个对象，用于指定开启子进程时使用的选项
-    cwd 子进程的工作目录
-    env 环境变量
-    detached 如果为true,该子进程为一个进程组中的领头进程，当父进程不存在时也可以独立存在
-    stdio 三个元素的数组，设置标准输入/输出
-        pipe 在父进程和子进程之间创建一个管道，父进程可以通过子进程的stdio[0]访问子进程的标准输入，通过stdio[1]访问标准输出,stdio[2]访问错误输出
-        ipc 在父进程和子进程之间创建一个专用与传递消息的IPC通道。可以调用子进程的send方法向子进程发消息，子进程会触发message事件
-        ignore 指定不为子进程设置文件描述符。这样子进程的标准输入、标准输出和错误输出被忽略
-        stream 子进程和父进程共享一个终端设备、文件、端口或管道
-        正整数值 和共享一个steam是一样的
-        null或undefined 在子进程中创建与父进程相连的管道
-        默认情况下，子进程的stdin,stdout,stderr导向了ChildProcess这个对象的child.stdin,child.stdout,child.stderr流
-
-let spawn = require('child_process').spawn;
-sapwn('prg',[],{stdio:['pipe','pipe',process.stderr]});
-    ignore ['ignore','ignore','ignore'] 全部忽略
-    pipe ['pipe','pipe','pipe'] 通过管道连接
-    inherit [process.stdin,process.stdout,process.stderr]或[0,1,2] 和父进程共享输入输出
-let spawn = require('child_process').spawn;
-spawn('prg',[],{stdio:'inherit'});
-    spawn方法返回一个隐式创建的代表子进程的ChildProcess对象
-    子进程对象同样拥有stdin属性值为一个可用于读入子进程的标准输入流对象
-    子进程对象同样拥有stdiout属性值和stderr属性值可分别用于写入子进程的标准输出流与标准错误输出流
+    let spawn = require('child_process').spawn;
+    sapwn('prg',[],{stdio:['pipe','pipe',process.stderr]});
+        ignore ['ignore','ignore','ignore'] 全部忽略
+        pipe ['pipe','pipe','pipe'] 通过管道连接
+        inherit [process.stdin,process.stdout,process.stderr]或[0,1,2] 和父进程共享输入输出
+    let spawn = require('child_process').spawn;
+    spawn('prg',[],{stdio:'inherit'});
+        spawn方法返回一个隐式创建的代表子进程的ChildProcess对象
+        子进程对象同样拥有stdin属性值为一个可用于读入子进程的标准输入流对象
+        子进程对象同样拥有stdiout属性值和stderr属性值可分别用于写入子进程的标准输出流与标准错误输流
 
 
 2.1.2 close
 
 当子进程所有输入输出都终止时，会触发子进程对象的close事件。
-child.on('close',function(code,signal){});
+
+    child.on('close',function(code,signal){});
 code 为0表示正常推出，为null表示异常退出
 当在父进程中关闭子进程时，signal参数值为父进程发给子进程的信号名称
 
@@ -162,22 +190,23 @@ code 为0表示正常推出，为null表示异常退出
 当子进程退出时，触发子进程对象的exit事件
 因为多个进程可能会共享i 个输入/输出，所以当子进程退出时，子进程的输入/输出可能并未终止
 
-child.on('exit',function(code,signal){});
+    child.on('exit',function(code,signal){});
 
 
 2.1.4 error
 
 如果子进程开启失败，那么将会触发子进程对象的error事件
 
-child1.on('error', function (err) {
-  console.log(err);
-});
+    child1.on('error', function (err) {
+    console.log(err);
+    });
 
 
 2.1.5 kill
 
 父进程还可以使用kill方法向子进程发送信号,参数为描述该信号的字符串，默认参数值为SIGTERM
 SIGTERM 程序结束(terminate)信号, 与SIGKILL不同的是该信号可以被阻塞和处理. 通常用来要求程序自己正常退出
+
 child.kill([signal]);
 
 
@@ -253,33 +282,37 @@ child.kill([signal]);
 2.2 fork开启子进程
 
 衍生一个新的 Node.js 进程，并通过建立一个 IPC 通讯通道来调用一个指定的模块，该通道允许父进程与子进程之间相互发送信息
+
 fork方法返回一个隐式创建的代表子进程的ChildProcess对象
+
 子进程的输入/输出操作执行完毕后，子进程不会自动退出，必须使用process.exit()方法显式退出
-child_process.fork(modulePath,[args],[options]);
-    args 运行该文件模块文件时许哟啊使用的参数
-    options 选项对象
-        cwd 指定子进程当前的工作目录
-        env 属性值为一个对象，用于以"键名/键值"的形式为子进程指定环境变量
-        encoding 属性值为一个字符串 ，用于指定输出及标准错误输出数据的编码格式，默认值为'utf8'
-        silent 属性值为布尔值，当属性值为false时，子进程和父进程对象共享标准(输入/输出),true时不共享
+
+
+    child_process.fork(modulePath,[args],[options]);
+        args 运行该文件模块文件时许哟啊使用的参数
+        options 选项对象
+            cwd 指定子进程当前的工作目录
+            env 属性值为一个对象，用于以"键名/键值"的形式为子进程指定环境变量
+            encoding 属性值为一个字符串 ，用于指定输出及标准错误输出数据的编码格式，默认值为'utf8'
+            silent 属性值为布尔值，当属性值为false时，子进程和父进程对象共享标准(输入/输出),true时不共享
 
 
 2.2.1 发送消息
 
-child.send(message,[sendHandle]);//在父进程中向子进程发送消息
-process.send(message,[sendHandle]);//在子进程中向主进程发送消息
-    message是一个对象，用于指定需要发送的消息
-    sendHandle是一个 net.Socket 或 net.Server 对象
-    子进程可以监听父进程发送的message事件
-process.on('message',function(m,setHandle){});
-    m 参数值为子进程收到的消息
-    sendHandle为服务器对象或socket端口对象
+    child.send(message,[sendHandle]);//在父进程中向子进程发送消息
+    process.send(message,[sendHandle]);//在子进程中向主进程发送消息
+        message是一个对象，用于指定需要发送的消息
+        sendHandle是一个 net.Socket 或 net.Server 对象
+        子进程可以监听父进程发送的message事件
+    process.on('message',function(m,setHandle){});
+        m 参数值为子进程收到的消息
+        sendHandle为服务器对象或socket端口对象
 
-当父进程收到子进程发出的消息时，触发子进程的message事件
+    当父进程收到子进程发出的消息时，触发子进程的message事件
 
-child.on('message',function(m,setHandle){
-  //TODO事件回调函数代码
-});
+    child.on('message',function(m,setHandle){
+    //TODO事件回调函数代码
+    });
 
 
 ## 5.fork.js
@@ -491,11 +524,12 @@ function(err,stdout,stderr){}
 
 可以使用execFile开启一个专门用于运行某个可执行文件的子进程
 类似 child_process.exec()，但直接衍生命令，且无需先衍生一个 shell
-child_process.execFile(file,[args],[optioins],[callback]);
-    file 指定需要运行的可执行文件路径及文件名
-    args 运行该文件所需要的参数
-    options 开启子进程的选项
-    callback 指定子进程终止时调用的回调函数
+
+        child_process.execFile(file,[args],[optioins],[callback]);
+            file 指定需要运行的可执行文件路径及文件名
+            args 运行该文件所需要的参数
+            options 开启子进程的选项
+            callback 指定子进程终止时调用的回调函数
 
 
     let {execFile} = require('child_process');
@@ -547,6 +581,7 @@ child_process.execFile(file,[args],[optioins],[callback]);
 3.1 fork方法创建work对象
 
 可以使用fork方法开启多个子进程，在每个子进程中创建一个Node.js应用程序的实例，并且在该应用程序中运行一个模块文件。
+
 fork方法返回一个隐式创建的work对象
 在cluster模块中，分别提供了一个isMaster属性与一个isWork属性，都是布尔值
 cluster.fork([env]);
@@ -554,17 +589,17 @@ env 为子进程指定环境变量
 
 3.1.1 获取所有的worker
 
-for(let index in cluster.workers){
-    console.log(cluster.workers[index]);
-}
+    for(let index in cluster.workers){
+        console.log(cluster.workers[index]);
+    }
 
 3.1.2 获取当前的worker和id
 
-if(cluster.isMaster){
-  cluster.fork()
-}else if(cluster.isWorker){
-  console.log('I am worker #'+cluster.worker.id);
-}
+    if(cluster.isMaster){
+    cluster.fork()
+    }else if(cluster.isWorker){
+    console.log('I am worker #'+cluster.worker.id);
+    }
 
 
 3.1.3 服务器
@@ -596,9 +631,10 @@ cluster.on('fork',function(worker){
 3.1.5 online事件
 
 在使用fork方法开启一个新的用于运行Node.js应用程序的子进程后，该应用程序将通过向主进程发送反馈信息，当主进程接收到该反馈信息后，触发online事件
-cluster.on('online',function(worker){
-  console.log('已经收到子进程#'+workder.id+"的消息");
-});
+
+    cluster.on('online',function(worker){
+    console.log('已经收到子进程#'+workder.id+"的消息");
+    });
 
 
 3.1.6 listening
@@ -630,26 +666,26 @@ cluster.on('online',function(worker){
 
 子进程中的Node.js应用程序默认运行当前正在运行的Node.js应用程序中的主模块文件。可以使用setupMaster方法修改子进程中运行的模块文件
 
-cluster.setupMaster([settings]);
-settings设置子进程中运行的Node.js应用程序各种默认行为的对象
-exec 子进程运行的模块文件名称的完整路径及文件名
-args 属性为一个数组，其中存放了所有运行子进程的Node.js运行程序所需要的参数
-silent 布尔值。当属性值为false时，子进程对象与主进程对象共享标准输入/输出
-    let cluster = require('cluster');
-    cluster.setupMaster({
-        exec: 'subtask.js'
-    });
-    cluster.fork();
-    console.log('这段代码被运行子主进程中');
-    console.log('cluster.settings属性值: %j', cluster.settings);
-    let http = require('http');
-    http.createServer(function (req, res) {
-        if (req.url != '/favicon.ico') {
-            res.writeHead(200);
-            res.end('ok');
-            console.log('这段代码被运行在子进程中');
-        }
-    }).listen(8080);
+    cluster.setupMaster([settings]);
+    settings设置子进程中运行的Node.js应用程序各种默认行为的对象
+    exec 子进程运行的模块文件名称的完整路径及文件名
+    args 属性为一个数组，其中存放了所有运行子进程的Node.js运行程序所需要的参数
+    silent 布尔值。当属性值为false时，子进程对象与主进程对象共享标准输入/输出
+        let cluster = require('cluster');
+        cluster.setupMaster({
+            exec: 'subtask.js'
+        });
+        cluster.fork();
+        console.log('这段代码被运行子主进程中');
+        console.log('cluster.settings属性值: %j', cluster.settings);
+        let http = require('http');
+        http.createServer(function (req, res) {
+            if (req.url != '/favicon.ico') {
+                res.writeHead(200);
+                res.end('ok');
+                console.log('这段代码被运行在子进程中');
+            }
+        }).listen(8080);
 
 
 3.1.8 在子进程里运行服务器
@@ -736,10 +772,11 @@ silent 布尔值。当属性值为false时，子进程对象与主进程对象�
 
 在使用fork发放开启子进程后，可以使用fork方法所返回的worker对象的send方法在主进程中向子进程发送消息。
 
-worker.send(message,[sendHandle]);//在主进程中向子进程发送消息
-process.send(message,[sendHandle]);//在子进程中像主进程发送消息
-process.on('message',function(m,setHandle){});
+    worker.send(message,[sendHandle]);//在主进程中向子进程发送消息
+    process.send(message,[sendHandle]);//在子进程中像主进程发送消息
+    process.on('message',function(m,setHandle){});
 
+实例代码:
 
     let cluster = require('cluster');
     cluster.setupMaster({
@@ -790,15 +827,16 @@ process.on('message',function(m,setHandle){});
 
 当使用fork方法开启子进程后，可以使用fork方法返回的worker对象的kill方法强制关闭子进程
 
-worker.kill([signal]);
-signal 强制关闭子进程的信号字符串。默认参数值为 "SIGTERM"
+    worker.kill([signal]);
+    signal 强制关闭子进程的信号字符串。默认参数值为 "SIGTERM"
 
 
 3.2.5 exit
 
 当子进程退出时，将会触发worker对象的exit事件
 
-worker.on('exit',function(code,signal));
+    worker.on('exit',function(code,signal));
+    
 code 退出代码。正常退出为0，异常退出为null
 worker.exitedAfterDisconnect可以用于区分自发退出还是被动退出，主进程可以根据这个值决定是否重新衍生新的工作进程。
 
