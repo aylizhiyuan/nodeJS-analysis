@@ -30,8 +30,159 @@ javascript语言的设计者意识到，这时候主线程完全可以不管IO�
 ![event loop](http://www.ruanyifeng.com/blogimg/asset/2014/bg2014100802.png)
 
 
+#### 更近一步的理解浏览器异步队列任务
+
+宏队列,macrotask，也叫task，一些异步的任务的回调会进入macro task queue
+
+- setTimeout
+- setInterval
+- setImmediate
+- requestAnimationFrame
+- I/O
+- UI rendering(浏览器独有)
+
+微队列，microtask,也叫jobs,另一些异步任务的回调会进入micro task queue
+
+- process.nextTick(Node独有)
+- Promise
+- Object.observe
+- MutationObserve
+
+![event loop](https://segmentfault.com/img/remote/1460000016278118?w=710&h=749)
+
+让我们看一下一个代码执行的具体流程:
+
+1. 执行全局script同步代码,这些同步代码执行完毕后，调用栈清空
+2. 从微队列中取出位于队首的回调任务，放入执行栈中执行,长度减一
+3. 继续取出位于队首的任务，放入调用栈中执行，直到把微队列中的所有任务执行完毕。如果这时候在执行的时候产生了新的微任务，那么会加入到队列的末尾，也会在这个周期被调用执行
+4. 所有的微队列的任务执行完毕的时候，此时队列为空，调用栈为空
+5. 取出宏队列中位于队首的任务，放入栈中执行
+6. 执行完毕后，调用栈为空
+7. 重复3-7的过程
+
+这就是浏览器的事件循环Event Loop
+
+实例代码理解：
+
+        console.log(1); //同步代码
+        //第一个宏任务
+        setTimeout(() => {
+        console.log(2);
+        Promise.resolve().then(() => {
+            console.log(3) //第二个微任务
+        });
+        });
+
+        new Promise((resolve, reject) => {
+        console.log(4) //同步代码
+        resolve(5)
+        }).then((data) => {
+        console.log(data); //第一个微任务
+        })
+        //第二个宏 任务
+        setTimeout(() => {
+        console.log(6);
+        })
+
+        console.log(7); // 同步代码
+
+简单的说，就是微任务 ---> 第一个宏任务 ---> 微任务 ---> 第二个宏任务  ----> 不断循环
+
 
 #### nodeJS中的libuv异步实现原理
+
+先来看nodeJS中的libuv的结构图：
+![](https://segmentfault.com/img/remote/1460000016278119?w=800&h=316)
+
+nodeJS中执行宏任务有6个阶段：
+
+![](https://segmentfault.com/img/remote/1460000016278120?w=670&h=339)
+
+各个阶段执行的任务如下：
+
+- timers阶段：这个阶段执行setTimeout和setinterval预定的callback
+- I/O callback阶段：执行除了close事件的callbacks、被timers设定的callbacks、setImmediate()设定的callbacks这些之外的callbacks
+- idle,prepare阶段：仅node内部使用
+- poll阶段：获取新的I/O事件，适当的条件下node会阻塞
+- check阶段：执行setImmediate()设置的callbacks
+- close callback阶段：执行socket.on('close')这些
+
+你可以理解为在node中宏任务有很多种，但在浏览器中只有一种
+
+不同的宏任务会放在不同的宏队列里面
+
+nodejs中微队列主要有两个:
+
+- next tick queue 是放置process.nextTick回调任务
+- 其他的：比如promise
+
+你可以理解为浏览器只有一个微任务队列，而在nodeJS中有两个
+
+![](https://segmentfault.com/img/remote/1460000016278121?w=951&h=526)
+
+大体解释下nodeJS的event loop过程：
+
+1. 执行全局的script同步代码
+2. 执行微任务，先执行所有的next tick 中的所有任务，再执行类似于promise之类的微任务
+3. 开始执行宏任务，一共6个阶段，从第一阶段开始执行相应每一个阶段宏任务中的所有任务，注意，这里是所有每个阶段的宏任务队列的所有任务，在浏览器中只是取出第一个宏任务，每一个阶段的宏任务执行完毕后，开始执行微任务
+4. 微任务nextTick--->微任务Promise---->timers阶段 ---> 微任务 ---> I/O阶段 ---> 微任务 --> check阶段 ---> 微任务 ---> close阶段 --> 微任务 --> 重新回到timers阶段 ---> 继续循环
+
+
+
+![](https://segmentfault.com/img/remote/1460000016278122?w=420&h=433)
+![](https://segmentfault.com/img/remote/1460000016278123?w=676&h=449)
+
+看一个例子：
+
+        console.log('1'); //同步代码
+        //timer阶段的宏任务1
+        setTimeout(function() {
+            console.log('2');
+            process.nextTick(function() {
+                console.log('3');
+            })
+            new Promise(function(resolve) {
+                console.log('4');
+                resolve();
+            }).then(function() {
+                console.log('5')
+            })
+        })
+        //微任务Promise
+        new Promise(function(resolve) {
+            console.log('7');
+            resolve();
+        }).then(function() {
+            console.log('8')
+        })
+        //微任务nextTick
+        process.nextTick(function() {
+        console.log('6');
+        })
+        //timer阶段的宏任务2
+        setTimeout(function() {
+            console.log('9');
+            process.nextTick(function() {
+                console.log('10');
+            })
+            new Promise(function(resolve) {
+                console.log('11');
+                resolve();
+            }).then(function() {
+                console.log('12')
+            })
+        })
+
+
+总结： 
+
+1. 浏览器可以理解成只有1个宏任务队列和1个微任务队列，先执行全局Script代码，执行完同步代码调用栈清空后，从微任务队列中依次取出所有的任务放入调用栈执行，微任务队列清空后，从宏任务队列中只取位于队首的任务放入调用栈执行，注意这里和Node的区别，只取一个，然后继续执行微队列中的所有任务，再去宏队列取一个，以此构成事件循环。
+
+2. NodeJS可以理解成有4个宏任务队列和2个微任务队列，但是执行宏任务时有6个阶段。先执行全局Script代码，执行完同步代码调用栈清空后，先从微任务队列Next Tick Queue中依次取出所有的任务放入调用栈中执行，再从微任务队列Other Microtask Queue中依次取出所有的任务放入调用栈中执行。然后开始宏任务的6个阶段，每个阶段都将该宏任务队列中的所有任务都取出来执行（注意，这里和浏览器不一样，浏览器只取一个），每个宏任务阶段执行完毕后，开始执行微任务，再开始执行下一阶段宏任务，以此构成事件循环。
+
+3. MacroTask包括： setTimeout、setInterval、 setImmediate(Node)、requestAnimation(浏览器)、IO、UI rendering
+
+4. Microtask包括： process.nextTick(Node)、Promise、Object.observe、MutationObserver
 
 
 
