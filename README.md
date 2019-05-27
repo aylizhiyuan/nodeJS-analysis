@@ -7,6 +7,96 @@
 
 ![](http://davidshariff.com/blog/wp-content/uploads/2012/06/ecstack.jpg)
 
+看一个例子：
+            
+            (function foo(i) {
+            if (i === 3) {
+            return;
+            }
+            else {
+            foo(++i);
+            }
+            }(0));
+
+![](http://davidshariff.com/blog/wp-content/uploads/2012/06/es1.gif)
+
+一个函数调用就会在栈中创建一个栈帧。然而，我们主要关心的是在js层面，在解释器的内部，每次调用执行环境会有两个阶段：
+
+1. 创建阶段
+
+- 初始化作用域链
+- 创建变量、函数和参数
+    - 创建arguments object,检查上下文获取入参，初始化形参名称和数值，并创建一个引用拷贝
+    - 扫描上下文获取内部函数声明：发现一个函数就在variable object中创建一个和函数名一样的属性，该属性作为一个引用的指针指向函数
+    - 如果在variable object中已经存在了相同名称的属性，那么属性会重写
+    - 对发现的每一个内部变量的声明，都在variable object中创建一个和变量名一样的属性，并将其初始化undefine
+    - 如果在对象中发现已经存在相同变量名称的属性，那么就跳过，不做任何操作，继续扫描
+- 确定this的值
+
+2. 激活/代码执行阶段
+
+- 执行上下文中的函数代码，逐行运行js代码，并给变量赋值
+
+        executionContextObj = {
+        scopeChain: { /* variableObject + all parent execution context's variableObject */ },
+        //作用域链：{变量对象＋所有父执行环境的变量对象}
+        variableObject: { /* function arguments / parameters, inner variable and function declarations */ },
+        //变量对象:{函数形参＋内部的变量＋函数声明(但不包含表达式)}
+        this: {}
+
+
+
+
+看一个例子：
+
+        function foo(i) {
+            var a = 'hello';
+            var b = function privateB() {
+
+            };
+            function c() {
+
+            }
+        }
+
+        foo(22);
+
+当刚调用foo(22)函数的时候，创建阶段的上下文大致是下面的样子：
+
+        fooExecutionContext = {
+            scopeChain: { ... },
+            variableObject: {
+                arguments: {  // 创建了参数对象
+                    0: 22,
+                    length: 1
+                },
+                i: 22,  // 检查上下文，创建形参名称，赋值/或创建引用拷贝
+                c: pointer to function c()  // 检查上下文，发现内部函数声明，创建引用指向函数体
+                a: undefined,  // 检查上下文，发现内部声明变量a，初始化为undefined
+                b: undefined   // 检查上下文，发现内部声明变量b，初始化为undefined，此时并不赋值，右侧的函数作为赋值语句，在代码未执行前，并不存在
+            },
+            this: { ... }
+        }
+
+在执行完后的上下文大致如下：
+
+        fooExecutionContext = {
+            scopeChain: { ... },
+            variableObject: {
+                arguments: {
+                    0: 22,
+                    length: 1
+                },
+                i: 22,
+                c: pointer to function c()
+                a: 'hello',
+                b: pointer to function privateB()
+            },
+            this: { ... }
+        }
+
+
+
 
 
 ### 2. nodeJS中的eventLoop（异步实现）
