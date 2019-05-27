@@ -3,6 +3,12 @@
 
 ### 1. 理解js中的执行上下文（程序执行中栈空间的分配情况）
 
+栈的结构可以看看深入理解操作系统，里面有关于栈的具体代码执行中的分配情况，更容易理解js的执行上下文
+
+![](http://davidshariff.com/blog/wp-content/uploads/2012/06/ecstack.jpg)
+
+
+
 ### 2. nodeJS中的eventLoop（异步实现）
 
 #### 浏览器的异步实现原理
