@@ -294,11 +294,174 @@ nodejs中微队列主要有两个:
 
 对于体积较大的二进制文件，比如音频、视频文件，动辄好几个G大小，如果使用这种方法，很容易让内存爆仓
 
+理想的方法是读一部分，写一部分，不管文件有多大，只要时间允许，总会处理完成
+
+个人对于流的理解：首先实现流必须要理解文件的读写，而操作系统是用open/read/write实现文件的读写的
+
+在nodejs中有四种流：
+
+- Readable - 可读的流 (例如 fs.createReadStream()).
+- Writable - 可写的流 (例如 fs.createWriteStream()).
+- Duplex - 可读写的流 (例如 net.Socket).
+- Transform - 在读写过程中可以修改和变换数据的 Duplex 流 (例如 zlib.createDeflate()).
+
+#### readable可读流
+
+![](https://upload-images.jianshu.io/upload_images/3241721-0d0dd65389c687de.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/742/format/webp)
+
+资源的数据流并不是直接流向消费者，而是先push到缓存池，缓存池有一个水位标记highWatermark，超过这个标记阈值,push的时候会返回flase,从而控制读取数据流的速度，如同水管上的阀门，当水管面装满了水，就暂时关上阀门，不再从资源里抽水出来
+
+- 消费者主动执行了pause()
+- 消费速度比数据push到缓存池的生产速度慢
+
+![](https://upload-images.jianshu.io/upload_images/3241721-35e90580c88ed250.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/702/format/webp)
+
+这是puase模式下的可读流，在这种模式下可读流有三个状态
+
+- readable._readableState.flowing = null 目前没有数据消费者，所以不会从资源中读取数据
+- readable._readableState.flowing = false 暂停从资源库读取数据，但不会暂停数据生成，主动触发readable.puase()方法，readable.unpip()方法或者接收"背压"可达到此状态
+- readable._readableState.flowing = true 正在从资源中读取数据，监听"data"事件，调用readable.pipe()方法或者调用readable.resume()方法可达到此状态
+
+这种模式下，需要显式的调用read方法来读取数据，readable状态只是代表着有数据可读，要读还是要调用read方法
+
+#### writeStream可写流
+
+![](https://upload-images.jianshu.io/upload_images/3241721-b65ebaafd635caf9.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/726/format/webp)
+
+数据流过来的时候，会直接写入到资源池，当写入速度比较缓慢或者写入暂停时，数据流会进入队列池缓存起来，当生产者写入速度过快，把队列池装满了之后，就会出现背压，这个时候是需要告诉生产者暂停生产，当队列释放完毕后，会给生产者发送一个drain消息，让他恢复生产
+
+write方法向流中写入数据，并在数据处理完毕后调用callback.在确认了chunk后，如果内部缓冲区的大小小于创建流时设定的highWaterMark阈值，函数返回true.如果返回值为false(队列池已经满了)，应该停止向流中写数据，直到drain事件触发
+
+
+
 
 
 ### 4. nodeJS中的模块化
 
+commonJS规范API：
+
+require:加载所要依赖的其他模块
+module.exports 或者 exports:对外暴露接口
+
+特点:
+
+1. 模块输出的是一个值的拷贝，模块是运行时加载，同步加载
+2. CommonJS模块的顶层this指向当前模块
+3. exports是对module.exports的引用，不能直接给exports赋值，直接赋值无效
+4. 一个文件不能写多个module.exports，如果写多个，对外暴露的接口是最后一个
+5. 模块如果没有指定使用Module.exports或者exports对外暴露接口，在其他文件中引用该模块，得到的就是个空的对象
+
+问题:
+
+    //创建两个文件，module1.js 和 module2.js，并且让它们相互引用
+    // module1.js
+    exports.a = 1;
+    require('./module2');
+    exports.b = 2;
+    exports.c = 3;
+    
+    // module2.js
+    const Module1 = require('./module1');
+    console.log('Module1 is partially loaded here', Module1);
+
+在 module1 完全加载之前需要先加载 module2，而 module2 的加载又需要 module1。这种状态下，我们从 exports 对象中能得到的就是在发生循环依赖之前的这部分。上面代码中，只有 a 属性被引入，因为 b 和 c 都需要在引入 module2 之后才能加载进来。
+
+Node 使这个问题简单化，在一个模块加载期间开始创建 exports 对象。如果它需要引入其他模块，并且有循环依赖，那么只能部分引入，也就是只能引入发生循环依赖之前所定义的这部分。
+
+
+AMD规范API:
+
+define(id?,[]?,callback) 定义声明模块，参数id,模块id标识(可选),参数二是一个数组(可选),依赖其他的模块，最后是回调函数
+
+require([module],callback) 加载模块，参数1是数组，指定加载的模块，参数2是回调函数，模块加载完毕后执行
+
+    require.config({
+        baseUrl://基础路径
+        path://对象，对外加载的模块名称
+        shim://对象，配置非AMD模式的文件
+    })
+
+特点：异步加载，不会阻塞页面的加载，能并行加载多个模块，但是不能按需加载，必须提前加载所需依赖
+
+ES6规范API：
+
+export 用于规定模块的对外接口
+
+import 用与输入其他模块提供的功能
+
+特点：
+
+1. 顶层的this指向undefined,即不应该在顶层代码中使用this
+2. 自动采用严格模式 ”use strict“
+3. 静态化，编译时加载或者静态加载，编译时候输出接口
+4. export/import必须处于模块的顶层
+5. 模块输出的是值的引用
+
+问题:
+
+ES6 中，imports 是 exprts 的只读视图，直白一点就是，imports 都指向 exports 原本的数据，比如：
+
+        //------ lib.js ------
+        export let counter = 3;
+        export function incCounter() {
+            counter++;
+        }
+        
+        //------ main.js ------
+        import { counter, incCounter } from './lib';
+        
+        // The imported value `counter` is live
+        console.log(counter); // 3
+        incCounter();
+        console.log(counter); // 4
+        
+        // The imported value can’t be changed
+        counter++; // TypeError
+
+因此在 ES6 中处理循环引用特别简单，看下面这段代码：
+
+        //------ a.js ------
+        import {bar} from 'b'; // (1)
+        export function foo() {
+        bar(); // (2)
+        }
+        
+        //------ b.js ------
+        import {foo} from 'a'; // (3)
+        export function bar() {
+        if (Math.random()) {
+            foo(); // (4)
+        }
+        }
+
+假设先加载模块 a，在模块 a 加载完成之后，bar 间接性地指向的是模块 b 中的 bar。无论是加载完成的 imports 还是未完成的 imports，imports 和 exports 之间都有一个间接的联系，所以总是可以正常工作。
+
+
+
+
+
 ### 5. nodeJS中的异步Promise/async/await
+
+异步的实现这里就不再叙述了，这里要分析的是异步代码管理的几种写法:
+
+我们要控制异步，让他能跟同步一样
+
+1. 回调函数(简单来说，就是在一个异步任务的回调函数中再套一个异步任务，根据程序的执行顺序，永远都会先执行同步代码，第一个异步任务的代码首先被执行，剩下的就是第二个异步任务了，简单吧，实现的话通过setTimeout你可以很轻松的把一个函数变成一个异步的任务)
+2. 事件监听(事件也是宏任务，但是实现来说的话，事件是需要手动触发的，自己实现一下很容易)
+3. Promise(无非还是callback，只不过改了一种顺眼的写法而已了，它严格上来讲也是因为回调实现的，实现一个也非常的轻松)
+4. Generator(这个唯一不是用callback实现的管理方式)
+5. async/await(是在generator的基础上的语法糖)
+
+#### Generator是真正不同于回调函数的一种异步代码管理
+
+
+
+
+
+
+
+
+
 
 ### 6. nodeJS如何实现高并发
 
@@ -367,11 +530,11 @@ main.c sum.c ----> 翻译器 cpp（预处理文件） ccl(c编译器生成汇编
 
 虚拟内存可以实现数据共享：在进程加载系统库(系统头文件stdio.h)，总是要分配一块内存，将磁盘中的库文件加载到内存中，在直接使用物理内存时，由于物理内存的地址唯一，即使系统发现同一个库在系统内加载了两次，但每个进程指定的加载内存不一样，系统也无能为力，而在使用虚拟内存时，系统只需要将进程的虚拟内存地址指向库文件所在的物理内存地址即可，如上图所示，进程p1和p2的B地址都指向了物理地址C。
 
-虚拟内存实现SWAP：Liunx提出了SWAP的概念，可以使用SWAP分区，再分配物理内存，但可用内存不足的时候，将暂时不同的内存数据放到磁盘上，让有需要的进程先使用，等进程再需要使用数据的时候，再讲这些数据加载到内存中来，这种交换的技术，可以让进程使用更多的内存(mmap技术)
+虚拟内存实现SWAP：Liunx提出了SWAP的概念，可以使用SWAP分区，再分配物理内存，但可用内存不足的时候，将暂时不同的内存数据放到磁盘上，让有需要的进程先使用，等进程再需要使用数据的时候，再讲这些数据加载到内存中来，这种交换的技术，可以让进程使用更多的内存
 
 当你输入 ./proc 执行该程序的时候，会产生一个进程，操作系统会给这个进程分配对应的内存空间
 
-一个进程指的是一个正在运行的程序。一个正在运行的程序在内存中的情况:
+一个进程指的是一个正在运行的程序。一个正在运行的程序在内存中的情况（虚拟内存）:
 内核内存(对用户来说不可见) ----> 用户栈(运行的时候创建) ----> 共享库的内存映射区域（c标准库、数学库等等库文件、头文件） ----> 运行时的堆（程序员自己分配的内存空间） ----> 读/写段（已经初始化未初始化的全局静态变量） ----> 只读代码段（常量、只读数据、程序代码）
 
 以上可以简称：内存四区

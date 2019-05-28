@@ -27,7 +27,7 @@ function sum(a,b){
 //断言
 console.assert(sum(1,2)==3,'报错');
 
-let a = {name:'zfpx',home:{name:'北京'}};
+let a = {name:'zypx',home:{name:'北京'}};
 //可以列出对象的结构
 console.dir(global);
 //跟踪当前代码的调用栈
