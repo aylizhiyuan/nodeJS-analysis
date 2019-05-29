@@ -573,14 +573,385 @@ next和yield参数传递
 这就是Generator魔法背后的秘密！
 
 
+### 6. koa实现原理分析
+
+![](https://pic4.zhimg.com/80/v2-f0731a5f944119b3b59bde4d1bf3f58b_hd.jpg)
+
+koa的实现步骤：
+
+1. 封装node http server
+2. 构造request,response,context对象
+3. 中间件机制
+4. 错误处理
+
+#### 主线一:封装node http server
+
+    // application.js
+    let http = require('http');
+
+    class Application {
+
+        /**
+        * 构造函数
+        */
+        constructor() {
+            this.callbackFunc;
+        }
+
+        /**
+        * 开启http server并传入callback
+        */
+        listen(...args) {
+            let server = http.createServer(this.callback());
+            server.listen(...args);
+        }
+
+        /**
+        * 挂载回调函数
+        * @param {Function} fn 回调处理函数
+        */
+        use(fn) {
+            this.callbackFunc = fn;
+        }
+
+        /**
+        * 获取http server所需的callback函数
+        * @return {Function} fn
+        */
+        callback() {
+            return (req, res) => {
+                this.callbackFunc(req, res);
+            };
+        }
+
+    }
+
+    module.exports = Application;
+
+#### 主线二：构造request,response,context对象
+
+request是对node原生request的封装，response是对node原生response的封装，context对象则是回调函数上下文对象，挂载了request和response对象
+
+首先创建request.js
+
+    // request.js
+    let url = require('url');
+
+    module.exports = {
+
+        get query() {
+            return url.parse(this.req.url, true).query;
+        }
+
+    };
+
+很简单，就是导出一个对象，其中包含query的读取方法，用this.req.url是原生获取url的方法    
+
+然后创建response.js
+
+    // response.js
+    module.exports = {
+
+        get body() {
+            return this._body;
+        },
+
+        /**
+        * 设置返回给客户端的body内容
+        *
+        * @param {mixed} data body内容
+        */
+        set body(data) {
+            this._body = data;
+        },
+
+        get status() {
+            return this.res.statusCode;
+        },
+
+        /**
+        * 设置返回给客户端的stausCode
+        *
+        * @param {number} statusCode 状态码
+        */
+        set status(statusCode) {
+            if (typeof statusCode !== 'number') {
+                throw new Error('statusCode must be a number!');
+            }
+            this.res.statusCode = statusCode;
+        }
+
+    };
+也很简单，status读取方法分别设置或读取this.res.statusCode ,body的读写方法分别设置this._data的属性
+
+然后创建context.js
+
+    // context.js
+    module.exports = {
+
+        get query() {
+            return this.request.query;
+        },
+
+        get body() {
+            return this.response.body;
+        },
+
+        set body(data) {
+            this.response.body = data;
+        },
+
+        get status() {
+            return this.response.status;
+        },
+
+        set status(statusCode) {
+            this.response.status = statusCode;
+        }
+
+    };    
+
+可以看到主要是做一些常用方法的代理，通过context.query直接代理了context.request.query，context.body和context.status代理了context.response.body与context.response.status。而context.request，context.response则会在application.js中挂载
+
+    // application.js
+    let http = require('http');
+    let context = require('./context');
+    let request = require('./request');
+    let response = require('./response');
+
+    class Application {
+
+        /**
+        * 构造函数
+        */
+        constructor() {
+            this.callbackFunc;
+            this.context = context;
+            this.request = request;
+            this.response = response;
+        }
+
+        /**
+        * 开启http server并传入callback
+        */
+        listen(...args) {
+            let server = http.createServer(this.callback());
+            server.listen(...args);
+        }
+
+        /**
+        * 挂载回调函数
+        * @param {Function} fn 回调处理函数
+        */
+        use(fn) {
+            this.callbackFunc = fn;
+        }
+
+        /**
+        * 获取http server所需的callback函数
+        * @return {Function} fn
+        */
+        callback() {
+            return (req, res) => {
+                let ctx = this.createContext(req, res);
+                let respond = () => this.responseBody(ctx);
+                this.callbackFunc(ctx).then(respond);
+            };
+        }
+
+        /**
+        * 构造ctx
+        * @param {Object} req node req实例
+        * @param {Object} res node res实例
+        * @return {Object} ctx实例
+        */
+        createContext(req, res) {
+            // 针对每个请求，都要创建ctx对象
+            let ctx = Object.create(this.context);
+            ctx.request = Object.create(this.request);
+            ctx.response = Object.create(this.response);
+            ctx.req = ctx.request.req = req;
+            ctx.res = ctx.response.res = res;
+            return ctx;
+        }
+
+        /**
+        * 对客户端消息进行回复
+        * @param {Object} ctx ctx实例
+        */
+        responseBody(ctx) {
+            let content = ctx.body;
+            if (typeof content === 'string') {
+                ctx.res.end(content);
+            }
+            else if (typeof content === 'object') {
+                ctx.res.end(JSON.stringify(content));
+            }
+        }
+
+    }
+
+可以看到，最主要的是增加了createContext方法，基于我们之前创建的context 为原型，使用Object.create(this.context)方法创建了ctx，并同样通过Object.create(this.request)和Object.create(this.response)创建了request/response对象并挂在到了ctx对象上面。此外，还将原生node的req/res对象挂载到了ctx.request.req/ctx.req和ctx.response.res/ctx.res对象上。
+
+回过头去看我们之前的context/request/response.js文件，就能知道当时使用的this.res或者this.response之类的是从哪里来的了，原来是在这个createContext方法中挂载到了对应的实例上。一张图来说明其中的关系：
+
+构建了运行时上下文ctx之后，我们的app.use回调函数参数就都基于ctx了。
+
+#### 主线三：中间件机制
+
+    /**
+    * @file simpleKoa application对象
+    */
+    let http = require('http');
+    let context = require('./context');
+    let request = require('./request');
+    let response = require('.//response');
+
+    class Application {
+
+        /**
+        * 构造函数
+        */
+        constructor() {
+            this.middlewares = [];
+            this.context = context;
+            this.request = request;
+            this.response = response;
+        }
+
+        // ...省略中间 
+
+        /**
+        * 中间件挂载
+        * @param {Function} middleware 中间件函数
+        */
+        use(middleware) {
+            this.middlewares.push(middleware);
+        }
+
+        /**
+        * 中间件合并方法，将中间件数组合并为一个中间件
+        * @return {Function}
+        */
+        compose() {
+            // 将middlewares合并为一个函数，该函数接收一个ctx对象
+            return async ctx => {
+
+                function createNext(middleware, oldNext) {
+                    return async () => {
+                        await middleware(ctx, oldNext);
+                    }
+                }
+
+                let len = this.middlewares.length;
+                let next = async () => {
+                    return Promise.resolve();
+                };
+                for (let i = len - 1; i >= 0; i--) {
+                    let currentMiddleware = this.middlewares[i];
+                    next = createNext(currentMiddleware, next);
+                }
+
+                await next();
+            };
+        }
+
+        /**
+        * 获取http server所需的callback函数
+        * @return {Function} fn
+        */
+        callback() {
+            return (req, res) => {
+                let ctx = this.createContext(req, res);
+                let respond = () => this.responseBody(ctx);
+                let fn = this.compose();
+                return fn(ctx).then(respond);
+            };
+        }
+
+        // ...省略后面 
+
+    }
+
+    module.exports = Application;
+
+
+可以看到，首先对app.use进行改造了，每次调用app.use，就向this.middlewares中push一个回调函数。然后增加了一个compose()方法，利用我们前文分析的原理，对middlewares数组中的函数进行组装，返回一个最终的函数。最后，在callback()方法中，调用compose()得到最终回调函数，并执行
+
+#### 主线四:错误处理
+
+    /**
+    * @file simpleKoa application对象
+    */
+
+    let EventEmitter = require('events');
+    let http = require('http');
+    let context = require('./context');
+    let request = require('./request');
+    let response = require('./response');
+
+    class Application extends EventEmitter {
+
+        /**
+        * 构造函数
+        */
+        constructor() {
+            super();
+            this.middlewares = [];
+            this.context = context;
+            this.request = request;
+            this.response = response;
+        }
+
+        // ...
+
+        /**
+        * 获取http server所需的callback函数
+        * @return {Function} fn
+        */
+        callback() {
+            return (req, res) => {
+                let ctx = this.createContext(req, res);
+                let respond = () => this.responseBody(ctx);
+                let onerror = (err) => this.onerror(err, ctx);
+                let fn = this.compose();
+                // 在这里catch异常，调用onerror方法处理异常
+                return fn(ctx).then(respond).catch(onerror);
+            };
+        }
+
+        // ... 
+
+        /**
+        * 错误处理
+        * @param {Object} err Error对象
+        * @param {Object} ctx ctx实例
+        */
+        onerror(err, ctx) {
+            if (err.code === 'ENOENT') {
+                ctx.status = 404;
+            }
+            else {
+                ctx.status = 500;
+            }
+            let msg = err.message || 'Internal error';
+            ctx.res.end(msg);
+            // 触发error事件
+            this.emit('error', err);
+        }
+
+    }
+
+    module.exports = Application;
+
+
+详细的源代码可以查看simpleKoa文件夹
 
 
 
 
 
 
-
-### 6. nodeJS如何实现高并发
 
 ### 7. 如何分析nodeJS中的内存泄漏
 
