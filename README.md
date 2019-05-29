@@ -125,6 +125,29 @@ javascript语言的设计者意识到，这时候主线程完全可以不管IO�
 
 ![event loop](http://www.ruanyifeng.com/blogimg/asset/2014/bg2014100802.png)
 
+像是这样:
+
+    // `eventLoop` is an array that acts as a queue (first-in, first-out)
+    var eventLoop = [ ];
+    var event;
+
+    // keep going "forever"
+    while (true) {
+        // perform a "tick"
+        if (eventLoop.length > 0) {
+            // get the next event in the queue
+            event = eventLoop.shift();
+
+            // now, execute the next event
+            try {
+                event();
+            }
+            catch (err) {
+                reportError(err);
+            }
+        }
+    }
+
 
 #### 更近一步的理解浏览器异步队列任务
 
@@ -148,7 +171,7 @@ javascript语言的设计者意识到，这时候主线程完全可以不管IO�
 
 让我们看一下一个代码执行的具体流程:
 
-1. 执行全局script同步代码,这些同步代码执行完毕后，调用栈清空
+1. 执行全局script同步代码,这些同步代码执行完毕后，调用栈清空（有几个函数就有几个栈帧）
 2. 从微队列中取出位于队首的回调任务，放入执行栈中执行,长度减一
 3. 继续取出位于队首的任务，放入调用栈中执行，直到把微队列中的所有任务执行完毕。如果这时候在执行的时候产生了新的微任务，那么会加入到队列的末尾，也会在这个周期被调用执行
 4. 所有的微队列的任务执行完毕的时候，此时队列为空，调用栈为空
@@ -449,11 +472,105 @@ ES6 中，imports 是 exprts 的只读视图，直白一点就是，imports 都�
 1. 回调函数(简单来说，就是在一个异步任务的回调函数中再套一个异步任务，根据程序的执行顺序，永远都会先执行同步代码，第一个异步任务的代码首先被执行，剩下的就是第二个异步任务了，简单吧，实现的话通过setTimeout你可以很轻松的把一个函数变成一个异步的任务)
 2. 事件监听(事件也是宏任务，但是实现来说的话，事件是需要手动触发的，自己实现一下很容易)
 3. Promise(无非还是callback，只不过改了一种顺眼的写法而已了，它严格上来讲也是因为回调实现的，实现一个也非常的轻松)
-4. Generator(这个唯一不是用callback实现的管理方式)
+4. Generator(实现原理确认是跟栈帧有关系的)
 5. async/await(是在generator的基础上的语法糖)
 
-#### Generator是真正不同于回调函数的一种异步代码管理
+#### Generator
 
+ES6中引入了很多此前没有的概念，Iterator就是其中一个。它是一个指针对象，类似于单项链表的数据结构，通过next()将指针指向下一个节点
+
+我们可以定义一个数组，然后生成数组的Iterator对象
+
+    const arr = [100,200,300]
+    const iterator = arr[Symbol.iterator]()
+
+好，我现在已经生成了一个数组的Iterator对象，有两种方式使用它:next 和for...of
+
+    console.log(iterator.next())  // { value: 100, done: false }
+    console.log(iterator.next())  // { value: 200, done: false }
+    console.log(iterator.next())  // { value: 300, done: false }
+    console.log(iterator.next())  // { value: undefined, done: true }
+
+在看第二种:
+
+    let i
+    for (i of iterator) {
+        console.log(i)
+    }
+    // 打印：100 200 300     
+
+执行const h = Hello()得到的就是一个iterator对象，因为h[Symbol.iterator]是有值的，那么就可以用next()和for...of进行操作
+
+    function* Hello() {
+        yield 100
+        yield (function () {return 200})()
+        return 300 
+    }
+    const h = Hello()
+    console.log(h[Symbol.iterator])  // [Function: [Symbol.iterator]]
+
+下面是结果:
+
+    console.log(h.next())  // { value: 100, done: false }
+    console.log(h.next())  // { value: 200, done: false }
+    console.log(h.next())  // { value: 300, done: false }
+    console.log(h.next())  // { value: undefined, done: true }
+
+    let i
+    for (i of h) {
+        console.log(i)
+    }  
+
+下面我们来分析一下所有的步骤:
+
+- Generator不是函数，不是函数，不是函数
+- hello()不会立即出发执行，而是一上来暂停
+- 每次h.next()都会打破暂停状态去执行，直到遇到下一个yield或者return
+- 遇到yield时候，会执行yield后面的表达式，并返回执行之后的值，然后再次进入暂停状态，此时done:false
+- 遇到return时，会返回值，执行结束，即done:true
+- 每次h.next()的返回值都是{value:....,done:....}的形式
+
+
+next和yield参数传递
+
+我们之前已经知道，yield具有返回数据的功能。yield后面的数据被返回，存放到返回结果的value属性中
+
+    function* G() {
+        yield 100
+    }
+    const g = G()
+    console.log( g.next() ) // {value: 100, done: false}
+
+还有另外一个方向的参数传递,就是next向yield传递
+
+    function* G() {
+        const a = yield 100
+        console.log('a', a)  // a aaa
+        const b = yield 200
+        console.log('b', b)  // b bbb
+        const c = yield 300
+        console.log('c', c)  // c ccc
+    }
+    const g = G()
+    g.next()    // value: 100, done: false
+    g.next('aaa') // value: 200, done: false
+    g.next('bbb') // value: 300, done: false
+    g.next('ccc') // value: undefined, done: true
+
+- 执行第一个g.next()时，为传递任何参数，返回的{value: 100, done: false}，这个应该没有疑问
+- 执行第二个g.next('aaa')时，传递的参数是'aaa'，这个'aaa'就会被赋值到G内部的a标量中，然后执行console.log('a', a)打印出来，最后返回{value: 200, done: false}
+- 执行第三个、第四个时，道理都是完全一样的，大家自己捋一捋。
+
+有一个要点需要注意，就g.next('aaa')是将'aaa'传递给上一个已经执行完了的yield语句前面的变量，而不是即将执行的yield前面的变量。这句话要能看明白，看不明白就说明刚才的代码你还没看懂，继续看。
+
+
+普通函数在被调用时，JS引擎会创建一个栈帧，在里面准备好局部变量、函数参数、临时值、代码执行的位置（也就是说这个函数的第一行对应到代码区里的第几行机器码），在当前栈帧里设置好返回位置，然后将新帧压入栈顶。待函数执行结束后，这个栈帧将被弹出栈然后销毁，返回值会被传给上一个栈帧。
+
+当执行到yield语句时，Generator的栈帧同样会被弹出栈外，但Generator在这里耍了个花招——它在堆里保存了栈帧的引用（或拷贝）！这样当iter.next方法被调用时，JS引擎便不会重新创建一个栈帧，而是把堆里的栈帧直接入栈。因为栈帧里保存了函数执行所需的全部上下文以及当前执行的位置，所以当这一切都被恢复如初之时，就好像程序从原本暂停的地方继续向前执行了。
+
+而因为每次yield和iter.next都对应一次出栈和入栈，所以可以直接利用已有的栈机制，实现值的传出和传入。
+
+这就是Generator魔法背后的秘密！
 
 
 
