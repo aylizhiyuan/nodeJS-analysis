@@ -14,7 +14,7 @@ function fork(modulepath, args, options) {
     }
     spawn('node', [modulepath, ...args], opts);
 }
-let child = fork('fork.js', ['zfpx'], {
+let child = fork('fork.js', ['zypx'], {
     cwd: __dirname,
     silent: true
 });
@@ -23,4 +23,4 @@ let child = fork('fork.js', ['zfpx'], {
 // child.on('message', function (data) {
 //     console.log(data);
 // });
-// child.send({ name: 'zfpx' });
+// child.send({ name: 'zypx' });

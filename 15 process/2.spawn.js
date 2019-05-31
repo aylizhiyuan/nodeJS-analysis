@@ -7,6 +7,7 @@ let path = require('path');
 let p1 = spawn('node', ['test1.js', 'zypx'], {
     cwd: path.join(__dirname, 'test1'),
     //子进程p1的输入和输出交给系统跟node无关，它的错误输出交给父进程
+    //process.stdin和process.stdout意味着子进程的标准输入输出是直接跟父进程的标准输入输出共享
     stdio: [process.stdin, process.stdout, 'pipe']
 });
 let p2 = spawn('node', ['test2.js'], {

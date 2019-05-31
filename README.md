@@ -949,10 +949,6 @@ request是对node原生request的封装，response是对node原生response的封
 
 
 
-
-
-
-
 ### 7. 如何分析nodeJS中的内存泄漏
 
 牢记内存四区:全局区、代码区、堆区、栈区
@@ -1041,9 +1037,6 @@ main.c sum.c ----> 翻译器 cpp（预处理文件） ccl(c编译器生成汇编
 6. 更新PC：将PC设置成吓一跳指令的地址
 
 
-
-
-
 #### 进程和线程的区别
 
 计算机的核心是cpu,它承担了所有的计算任务,它就像是一个工厂，时刻都在运行
@@ -1075,12 +1068,164 @@ main.c sum.c ----> 翻译器 cpp（预处理文件） ccl(c编译器生成汇编
 
 #### nodeJS里面的多进程
 
+![](https://upload-images.jianshu.io/upload_images/704770-f0db94353574b23e.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1000/format/webp)
+
+子进程(child process)是进程中一个重要的概念，你可以通过nodejs的child_process模块来执行可执行文件，调用命令行命令，比如其他语言的程序等。也可以通过该模块将.js代码以子进程的方法启动。
+
+Nodejs中的child_process.fork()在unix系统中最终调用的是liunx系统中的fork()，而系统中的fork()需要手动管理子进程的资源释放(waitpid)，child_process.fork则不用关心这个问题，Nodejs会自动释放，并且可以在option中选择父进程死后是否允许子进程存活
+
+- spawn()启动一个子进程来执行命令
+    - options.detached 父进程死后是否允许子进程存活
+    - options.stdio 指定子进程的三个标准流
+- spawnSync() 同步版的spawn
+- exec() 启动一个子进程来执行命令，带回调参数获知子进程的情况
+- execSync() 同步版的exec()
+- execFile() 启动一个子进程来执行一个可执行文件
+- execFileSync() 同步版的execFile()
+- fork() 加强版的spawn() ,返回值是childProcess对象可以与子进程交互
+
+child.kill与chil.send的区别在于一个是信号、一个是IPC
+
+子进程死亡不会影响父进程，不过子进程死亡的时候，会向他的父进程发送死亡信号，反之父进程死亡，一般情况下子进程也会死亡。但如果此时子进程处于可运行的状态、僵死状态等等的话，子进程将被init进程收养，称为孤儿进程。另外，子进程死亡的时候，父进程没有及时的调用wait()或者waitpid()来返回死亡进程的相关信息，此时子进程还有一个PCB残留在进程表中，被称为僵尸进程
+
+Cluster是常见的nodejs利用多核的办法，它是基于child_process.fork()实现的，所以，cluster产生的进程之间是通过IPC通信的，并且它也没有拷贝父进程的空间，而是通过加入cluster.isMaster来区分父进程和子进程
+
+    const cluster = require('cluster');            // | | 
+    const http = require('http');                  // | | 
+    const numCPUs = require('os').cpus().length;   // | |    都执行了
+                                                // | | 
+    if (cluster.isMaster) {                        // |-|-----------------
+    // Fork workers.                             //   | 
+    for (var i = 0; i < numCPUs; i++) {          //   | 
+        cluster.fork();                            //   | 
+    }                                            //   | 仅父进程执行 (a.js)
+    cluster.on('exit', (worker) => {             //   | 
+        console.log(`${worker.process.pid} died`); //   | 
+    });                                          //   |
+    } else {                                       // |-------------------
+    // Workers can share any TCP connection      // | 
+    // In this case it is an HTTP server         // | 
+    http.createServer((req, res) => {            // | 
+        res.writeHead(200);                        // |   仅子进程执行 (b.js)
+        res.end('hello world\n');                  // | 
+    }).listen(8000);                             // | 
+    }                                              // |-------------------
+                                                // | |
+    console.log('hello');                          // | |    都执行了
+
+在上述代码中 numCPUs 虽然是全局变量但是, 在父进程中修改它, 子进程中并不会改变, 因为父进程与子进程是完全独立的两个空间. 他们所谓的共有仅仅只是都执行了, 并不是同一份.
+
+你可以把父进程执行的部分当做 a.js, 子进程执行的部分当做 b.js, 你可以把他们想象成是先执行了 node a.js 然后 cluster.fork 了几次, 就执行了几次 node b.js. 而 cluster 模块则是二者之间的一个桥梁, 你可以通过 cluster 提供的方法, 让其二者之间进行沟通交流.
+
+cluster的模块提供了两种分发连接的方式：(请求来的时候到底用哪个进程来处理)
+
+第一种方式(默认方式),通过时间片轮转法分发连接，主进程监听端口，接收到新的连接后，通过时间片轮转法来决定将接收到的客户端的socket句柄传递给指定的worker处理，至于每个连接由哪个worker来处理，完全由内置的循环算法决定
+
+第二种方式由主进程创建socket监听端口，将socket句柄直接分发给相应的worker，然后当连接进来的时候，就直接由相应的worker来接收并处理
+
+使用第二种方式理论上性能应该比较高，然后时间上存在负载不均衡的问题，比如通常70%的连接可能被8个进程中的2个处理，其他的比较清闲
+
+NodeJS中的父子进程通信是通过管道实现的libuv
+
+在 IPC 通道建立之前, 父进程与子进程是怎么通信的? 如果没有通信, 那 IPC 是怎么建立的?
+
+这个问题也挺简单, 只是个思路的问题. 在通过 child_process 建立子进程的时候, 是可以指定子进程的 env (环境变量) 的. 所以 Node.js 在启动子进程的时候, 主进程先建立 IPC 频道, 然后将 IPC 频道的 fd (文件描述符) 通过环境变量 (NODE_CHANNEL_FD) 的方式传递给子进程, 然后子进程通过 fd 连上 IPC 与父进程建立连接.
+
+最后于进程间通信 (IPC) 的问题, 一般不会直接问 IPC 的实现, 而是会问什么情况下需要 IPC, 以及使用 IPC 处理过什么业务场景等.
 
 
+#### 守护进程
 
+实现一个守护进程，其实就是将普通的进程变成一个拥有以下特点的进程
+- 后台运行
+- 系统启动就存在
+- 不予任何终端相关联，用于处理一些系统级别任务的特殊进程
 
+进程组和会话组：进程组和会话组在进程之间形成了两级的层次：进程组是一组相关进程的集合，会话是一组相关进程组的集合
 
+就像家族企业一样，如果从创建之初，所有家族成员墨守成规，循规蹈矩，默认情况下，就只会有一个公司、一个部门。但是也有些叛逆的子弟，愿意为家族开疆扩土，愿意成立新的部门。这些新的部门就是新创建的进程组。如果有子弟离经叛道，甚至不愿意呆在家族公司里，他别开天地，另创一个公司，那么这个新公司就是新创建的会话组
 
+当有新的用户登录liunx的时候，登录进程会为这个用户创建一个会话。用户登录的shell就是会话的首进程。会话的首进程ID会作为整个会话的ID。会话是一个或多个进程组的集合，囊括了登录用户的所有活动
+
+通常会话开始于用户登录，终止与用户退出，期间所有的进程都属于这个会话。一个会话一般包含一个会话首进程、一个前台进程组和一个后台的进程组
+
+- 会话首进程:其实就是用户登录的shell
+
+- 前台进程组:该进程组中的进程可以向终端设备进行读写操作，该进程组的ID等于控制终端进程组的ID
+
+例如 cmd1 | cmd2 | cmd3 就可以创建一个进程组
+
+- 后台进程组:会话中除了会话首进程和前台进程组以外的所有进程，都属于后台进程组。该进程组的进程只能向终端设备进行写操作
+
+用户在执行命令时，可以在命令的结尾添加“&”符号，表示将命令放入后台执行。这样该命令对应的进程组即为后台进程组。
+
+1. fork()创建子进程，父进程exit()退出
+
+这是创建守护进程的第一步。由于守护进程是脱离控制终端的，完成这一步后就会在shell终端里造成程序已经运行完毕的假象。之后的所有工作都在子进程中完成，而用户在shell终端里则可以执行其他的命令，从而形式上做到了与控制终端的脱离，在后台工作
+
+由于父进程先于子进程退出，子进程变成了孤儿进程，并由init进程做为其父进程收养
+
+2. 在子进程调用setsid()创建新会话
+
+在调用fork()函数后，子进程全盘拷贝了父进程的会话期、进程组、控制终端等，虽然父进程退出了，但会话期、进程组、控制终端等并没有改变。这还不是真正意义上的独立开来，而setsid()能够让进程完成独立出来
+
+setsid()创建一个新的会话，调用进程担任新回话的首进程
+
+3. 再fork()一个子进程，父进程exit退出
+
+现在，进程已经成为了无终端的会话组长了。但它可以重新申请打开一个控制终端，可以通过fork()一个子进程，该子进程不是会话首进程，该进程将不能重新打开控制终端
+
+也就是说，通过再次创建子进程结束当前进程，使进程不再是会话手进程来禁止进程重新打开控制终端
+
+4. 在子进程中调用chidir()让根目录'/'称为子进程的工作目录
+
+这一步也是必要的步骤。使用fork()创建的子进程集成了父进程当前的工作目录。由于在进程运行中，当前目录所在的文件系统是不能卸载的，这会对以后的使用造成猪都的麻烦。因此，通常的做法是让/作为守护进程的当前的工作目录，这样可以避免。也可以把/tmp当做是当前的工作目录。避免元原父进程当前目录带来的一些麻烦
+
+5. 在子进程中调用umask()重设文件权限掩码为0
+
+文件权限掩码是指屏蔽掉文件权限中的对应位。比如有个文件权限掩码是050，它就屏蔽了文件组拥有者的可读与可执行权限。由于使用fork函数新建立的子进程集成了父进程的文件权限掩码，这就给该子进程使用文件带来了麻烦。因此，把文件权限掩码重设为0即清除掩码（权限为777），通常的做法就是umask(0)，相当于将权限放开
+
+6. 在子进程中close()不需要的文件描述符
+
+同文件权限码一样，用fork()函数新建的子进程会从父进程那里继承一些已经打开了的 文件。所以，我们关闭失去价值的输入、输出、报错对应的文件描述符
+
+7. 守护进程退出处理
+
+当用户需要外部停止守护进程运行时候，往往使用Kill命令停止该守护进程。所以，守护进程中需要编码来实现kill发出的signal信号处理，达到进程的正常退出。
+
+守护进程的代码实现
+
+    void init_daemon()
+    {
+        pid_t pid;
+        int i = 0;
+
+        if ((pid = fork()) == -1) {
+            printf("Fork error !\n");
+            exit(1);
+        }
+
+        if (pid != 0) {
+            exit(0);        // 父进程退出
+        }
+
+        setsid();           // 子进程开启新会话, 并成为会话首进程和组长进程
+        if ((pid = fork()) == -1) {
+            printf("Fork error !\n");
+            exit(-1);
+        }
+        if (pid != 0) {
+            exit(0);        // 结束第一子进程, 第二子进程不再是会话首进程
+                            // 避免当前会话组重新与tty连接
+        }
+        chdir("/tmp");      // 改变工作目录
+        umask(0);           // 重设文件掩码
+        for (; i < getdtablesize(); ++i) {
+        close(i);        // 关闭打开的文件描述符
+        }
+
+        return;
+    }
 
 ####  解决高并发的方案
 
@@ -1104,16 +1249,248 @@ main.c sum.c ----> 翻译器 cpp（预处理文件） ccl(c编译器生成汇编
 
 7.还需要建立大数据访问情况下的服务降级以及限流机制等
 
-### 9. 负载均衡
 
-### 10. 错误管理
+### 9. 错误管理
 
-### 11. 单元测试
+这个是我在写项目的时候最头疼的问题，没有之一。
 
-### 未完待续....
+我目前的主要做法是绕过层层的callback函数，在一个统一的入口处集中处理，错误冒泡到入口处的时候，打印错误信息
+
+uncaughtException 的初衷是可以让你拿到错误之后可以做一些回收处理之后再 process.exit. 官方的同志们还曾经讨论过要移除该事件
+
+所以你需要明白 uncaughtException 其实已经是非常规手段了, 应尽量避免使用它来处理错误. 因为通过该事件捕获到错误后, 并不代表 你可以愉快的继续运行 (On Error Resume Next). 程序内部存在未处理的异常, 这意味着应用程序处于一种未知的状态. 如果不能适当的恢复其状态, 那么很有可能会触发不可预见的问题. (使用 domain 会很夸张的加剧这个现象, 并产生新人不能理解的各类幽灵问题)
+
+所以官方建议的使用 uncaughtException 的正确姿势是在结束进程前使用同步的方式清理已使用的资源 (文件描述符、句柄等) 然后 process.exit.
+
+当 Promise 被 reject 且没有绑定监听处理时, 就会触发该事件unhandledRejection. 该事件对排查和追踪没有处理 reject 行为的 Promise 很有用
+
+    process.on('unhandledRejection', (reason, p) => {
+    console.log('Unhandled Rejection at: Promise', p, 'reason:', reason);
+    // application specific logging, throwing an error, or other logic here
+    });
+
+    somePromise.then((res) => {
+    return reportToUser(JSON.pasre(res)); // note the typo (`pasre`)
+    }); // no `.catch` or `.then`
 
 
 
+### 10. 测试
+
+#### 黑盒测试
+
+黑盒测试 (Black-box Testing), 测试应用程序的功能, 而不是其内部结构或运作. 测试者不需了解代码、内部结构等, 只需知道什么是应用应该做的事, 即当键入特定的输入, 可得到一定的输出. 测试者通过选择有效输入和无效输入来验证是否正确的输出. 此测试方法可适合大部分的软件测试, 例如集成测试 (Integration Testing) 以及系统测试 (System Testing).
+
+#### 白盒测试
+
+白盒测试 (White-box Testing) 测试应用程序的内部结构或运作, 而不是测试应用程序的功能 (即黑盒测试). 在白盒测试时, 以编程语言的角度来设计测试案例. 白盒测试可以应用于单元测试 (Unit Testing)、集成测试 (Integration Testing) 和系统的软件测试流程, 可测试在集成过程中每一单元之间的路径, 或者主系统跟子系统中的测试.
+
+#### 单元测试
+
+单元测试 (Unit Testing) 是白盒测试的一种, 用于针对程序模块进行正确性检验的测试工作. 单元 (Unit) 是指最小可测试的部件. 在过程化编程中, 一个单元就是单个程序、函数、过程等; 对于面向对象编程, 最小单元就是方法, 包括基类、抽象类、或者子类中的方法.
+
+另外, 每次修改代码之后, 通过单元测试来验证比把整个应用启动/重启验证要更快/更简单.
+
+常用的测试工具:
+- macha
+- ava
+- jest
+
+### 集成测试
+
+集成测试也称综合测试、组装测试、联合测试, 将程序模块采用适当的集成策略组装起来, 对系统的接口及集成后的功能进行正确性检测的测试工作. 集成测试可以是黑盒的, 也可以是白盒的, 其主要目的是检查软件单位之间的接口是否正确, 而集成测试的对象是已经经过单元测试的模块.
+
+例如你可以在本地将项目中的 web app 启动, 并模拟接口调用:
+
+    describe('Path API', () => {
+    // ...
+
+    describe('GET /v2/path/:_id', () => {
+        it('should return 200 GET /v2/path/:_id', () => {
+        return request
+            .get('/v2/path/' + pathId)
+            .set('Cookie', 'common_user=xxx')
+            .expect(200);
+        });
+    });
+
+    describe('POST /v2/path', () => {
+        it('should return 412 POST /v2/path lost params path', () => {
+        return request
+            .post('/v2/path')
+            .set('Cookie', 'common_user=xxx')
+            .expect(412);
+        });
+
+        it('should return 409 POST /v2/path when path exist', () => {
+        return request
+            .post('/v2/path')
+            .send({path: '/'})
+            .set('Cookie', 'common_user=xxx')
+            .expect(409);
+        });
+
+        it('should return 200 POST /v2/path successfully', () => {
+        return request
+            .post('/v2/path')
+            .send({path: '/comment'})
+            .set('Cookie', 'common_user=xxx')
+            .expect(200);
+        });
+    });
+
+    // ...
+    });
+
+#### 基准测试
+
+目前 Node.js 中流行的白盒级基准测试工具是 benchmark.
 
 
+    const Benchmark = require('benchmark');
+    const suite = new Benchmark.Suite;
+
+    suite.add('RegExp#test', function() {
+        /o/.test('Hello World!');
+    })
+    .add('String#indexOf', function() {
+        'Hello World!'.indexOf('o') > -1;
+    })
+    .on('cycle', function(event) {
+        console.log(String(event.target));
+    })
+    .on('complete', function() {
+        console.log('Fastest is ' + this.filter('fastest').map('name'));
+    })
+    // run async
+    .run({ 'async': true });
+
+#### 压力测试
+
+压力测试 (Stress testing), 是保证系统稳定性的一种测试方法. 通过预估系统所需要承载的 QPS, TPS 等指标, 然后通过如 Jmeter 等压测工具模拟相应的请求情况, 来验证当前应能能否达到目标.
+
+对于比较重要, 流量较高或者后期业务量会持续增长的系统, 进行压力测试是保证项目品质的重要环节. 常见的如负载是否均衡, 带宽是否合理, 以及磁盘 IO 网络 IO 等问题都可以通过比较极限的压力测试暴露出来.
+
+#### Assert
+断言 (Assert) 是快速判断并对不符合预期的情况进行报错的模块. 是将:
+
+    if (condition) {
+    throw new Error('Sth wrong');
+    }
+
+写成:
+
+    assert(!condition, 'Sth wrong');  
+
+等等情况的一种简化. 并且提供了丰富了 equal 判断, 对于对象类型也有深度/严格判断等情况支持.
+
+Node.js 中内置的 assert 模块也是属于断言模块的一种, 但是官方在文档中有注明, 该内置模块主要是用于内置代码编写时的基本断言需求, 并不是一个通用的断言库 (not intended to be used as a general purpose assertion library)
+
+常见的断言工具
+
+- chai
+- should.js
+
+
+### 11. web安全
+
+#### XSS
+
+跨站脚本 (Cross-Site Scripting, XSS) 是一种代码注入方式, 为了与 CSS 区分所以被称作 XSS. 早期常见于网络论坛, 起因是网站没有对用户的输入进行严格的限制, 使得攻击者可以将脚本上传到帖子让其他人浏览到有恶意脚本的页面, 其注入方式很简单包括但不限于 JavaScript / VBScript / CSS / Flash 等.
+
+当其他用户浏览到这些网页时, 就会执行这些恶意脚本, 对用户进行 Cookie 窃取/会话劫持/钓鱼欺骗等各种攻击. 其原理, 如使用 js 脚本收集当前用户环境的信息 (Cookie 等), 然后通过 img.src, Ajax, onclick/onload/onerror 事件等方式将用户数据传递到攻击者的服务器上. 钓鱼欺骗则常见于使用脚本进行视觉欺骗, 构建假的恶意的 Button 覆盖/替换真实的场景等情况 (该情况在用户上传 CSS 的时候也可能出现, 如早期淘宝网店装修, 使用 CSS 拼接假的评分数据等覆盖在真的评分数据上误导用户).
+
+用户除了上传
+
+    <script>alert('xss')</script>
+
+还可以使用图片url等方式来上传脚本进行攻击
+
+    <table background="javascript:alert(/xss/)"></table>
+    <img src="javascript:alert('xss')">
+
+还可以使用各种方式来回避检查, 例如空格, 回车, Tab
+
+    <img src="javas cript:
+    alert('xss')">
+
+还可以通过各种编码转换 (URL 编码, Unicode 编码, HTML 编码, ESCAPE 等) 来绕过检查
+
+    <img%20src=%22javascript:alert('xss');%22>
+    <img src="javascrip&#116&#58alert(/xss/)">
+
+在百般无奈, 没有统一解决方案的情况下, 厂商们推出了 CSP 策略.
+
+以 Node.js 为例, 计算脚本的 hashes 值:
+
+    const crypto = require('crypto');
+
+    function getHashByCode(code, algorithm = 'sha256') {
+    return algorithm + '-' + crypto.createHash(algorithm).update(code, 'utf8').digest("base64");
+    }
+
+    getHashByCode('console.log("hello world");'); // 'sha256-wxWy1+9LmiuOeDwtQyZNmWpT0jqCUikqaqVlJdtdh/0='
+
+设置 CSP 头:
+
+content-security-policy: script-src 'sha256-wxWy1+9LmiuOeDwtQyZNmWpT0jqCUikqaqVlJdtdh/0='
+
+    <script>console.log('hello geemo')</script> <!-- 不执行 -->
+    <script>console.log('hello world');</script> <!-- 执行 -->
+
+#### CSRF
+
+跨站请求伪造 Cross-Site Request Forgery, CSRF 是一种伪造跨站请求的攻击方式. 例如利用你在 A 站 (攻击目标) 的 cookie / 权限等, 在 B 站 (恶意/钓鱼网站) 拼装 A 站的请求.
+
+比如 Q 君是某论坛管理员. 已知这个论坛 A 删除的接口是 post 到某个地址, 并指定一个帖子的 id. 那么我可以在自己的博客 B 上组织一个 CSRF 请求. 然后诱使 Q 君来访问我的博客. 就可以在 Q 君不知情的情况下删除掉我想删的某个帖子.
+
+钓鱼方式包括但不限于公开网站 (xss), 攻击者的恶意网站, email 邮件, 微博, 微信, 短信等及时消息.
+
+同源策略是最早用于防止 CSRF 的一种方式, 即关于跨站请求 (Cross-Site Request) 只有在同源/信任的情况下才可以请求. 但是如果一个网站群, 在互相信任的情况下, 某个网站出现了问题:
+
+    a.public.com
+    b.public.com
+    c.public.com
+    ...
+
+以上情况下, 如果 c.public.com 上没有预防 xss 等情况, 使得攻击者可以基于此站对其他信任的网站发起 CSRF 攻击.
+
+另外同源策略主要是浏览器来进行验证的, 并且不同浏览器的实现又各自不同, 所以在某些浏览器上可以直接绕过, 而且也可以直接通过短信等方式直接绕过浏览器.
+
+解决方案：
+
+- 同源检查
+
+通过检查来过滤简单的 CSRF 攻击, 主要检查一下两个 header:
+
+Origin Header
+
+Referer Header
+
+- CSRF token
+
+简单来说, 对需要预防的请求, 通过特别的算法生成 token 存在 session 中, 然后将 token 隐藏在正确的界面表单中, 正式请求时带上该 token 在服务端验证, 避免跨站请求.
+
+
+#### SQL/NoSQL 注入
+
+注入攻击是指当所执行的一些操作中有部分由用户传入时, 用户可以将其恶意逻辑注入到操作中. 当你使用 eval, new Function 等方式执行的字符串中有用户输入的部分时, 就可能被注入攻击. 上文中的 XSS 就属于一种注入攻击. 前面的章节中也提到过 Node.js 的 child_process.exec 由于调用 bash 解析, 如果执行的命令中有部分属于用户输入, 也可能被注入攻击.
+
+Sql 注入是网站常见的一种注入攻击方式. 其原因主要是由于登录时需要验证用户名/密码, 其执行 sql 类似:
+
+    SELECT * FROM users WHERE usernae = 'myName' AND password = 'mySecret';
+
+其中的用户名和密码属于用户输入的部分, 那么在未做检查的情况下, 用户可能拼接恶意的字符串来达到其某种目的, 例如上传密码为 '; DROP TABLE users; -- 使得最终执行的内容为:
+
+    SELECT * FROM users WHERE usernae = 'myName' AND password = ''; DROP TABLE users; --';
+
+
+
+其能实现的功能, 包括但不限于删除数据 (经济损失), 篡改数据 (密码等), 窃取数据 (网站管理权限, 用户数据) 等. 防治手段常见于:
+
+- 给表名/字段名加前缀 (避免被猜到)
+- 报错隐藏表信息 (避免被看到, 12306 早期就出现过的问题)
+- 过滤可以拼接 SQL 的关键字符
+- 对用户输入进行转义
+- 验证用户输入的类型 (避免 limit, order by 等注入)
 
